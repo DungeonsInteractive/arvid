@@ -1,5 +1,6 @@
 #pragma once
 #include "mbed.h"
+#include <array>
 
 class Joystick {
     private:
@@ -10,5 +11,6 @@ class Joystick {
 
         Joystick(PinName analogX, PinName analogY);
 
-        void reportPosition();
+        array<float, 2> reportPosition();
+
 };
