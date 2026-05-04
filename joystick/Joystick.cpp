@@ -1,7 +1,9 @@
 #include "mbed.h"
 #include "Joystick.h"
 
-Joystick::Joystick(PinName analogX, PinName analogY) : analogX_(analogX), analogY_(analogY) { };
+Joystick::Joystick(PinName analogX, PinName analogY, PinName pushB) : analogX_(analogX), analogY_(analogY), pushB_(pushB) { };
+
+InterruptIn pushEvent();
 
 array<float, 2> Joystick::reportPosition() {
 
@@ -11,9 +13,17 @@ array<float, 2> Joystick::reportPosition() {
     posY = analogY_.read();
     
     array<float, 2> returnVal;
+
     returnVal[0] = posX;
     returnVal[1] = posY;
 
     return returnVal;   
 }
 
+bool Joystick::reportPush() {
+    
+    bool UpDown;
+    UpDown = pushB_.read();
+
+    return UpDown;
+}
