@@ -32,9 +32,7 @@ bool drawnB = false;
 int start = 0;
 
 struct  {
-
     // game symbols
-
     char symbolA[8] { 0x0E, 0x1F, 0x1B, 0x1B, 0x1F, 0x1B, 0x1B, 0x1B };
     char symbolR[8] { 0x1C, 0x1E, 0x1B, 0x19, 0x1F, 0x1B, 0x1B, 0x1B };
     char symbolV[8] { 0x1B, 0x1B, 0x1B, 0x1B, 0x1B, 0x1B, 0x1F, 0x0E };
@@ -65,7 +63,6 @@ struct  {
     //Characters  need actualt desgin
     char Charfighter[8] {  0x00, 0x00, 0x02, 0x1E, 0x1E, 0x02, 0x00, 0x00};
 
-
     // mana and health
     char manaSymbol[8] { 0x00, 0x00, 0x0E, 0x04, 0x0E, 0x0E, 0x0E, 0x00 };
     char healthSymbol[8] { 0x00, 0x00, 0x0A, 0x1F, 0x1F, 0x0E, 0x04, 0x00 };
@@ -76,7 +73,6 @@ struct  {
 
 
 struct {
-
     // to be filled later 
 } GameMaps;
 
@@ -87,11 +83,9 @@ enum DIRECTION {
     LEFT,
     NEUTRAL,
     NULLPOSITION
-
 };
 
 // store game states for future stuff
-
 enum GAMESTATE {
     MENU,
     CHARACTER_SELECT,
@@ -118,7 +112,7 @@ Entity nextEntityID = 0;
 CLASS playClass;
 GAMESTATE currentGameState;
 DIRECTION currentDirection;
-
+bool selectionConfirmed = false;
 bool SELECT[maxEntities];
 
 // Components
@@ -402,6 +396,8 @@ void renderSystemSide(GAMESTATE currentState_) {
             sideLCD.printf("%c%c%c%c  %c%c%c%c  %c%c%c%c", 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3);
             sideLCD.locate(1, 1);
             sideLCD.printf("Choose a class");
+
+
     } else if (currentState_ == FIGHT) {
 
 
@@ -428,7 +424,6 @@ void renderSystemSide(GAMESTATE currentState_) {
 
 void renderSystemMain(GAMESTATE &currentState_) {
 
-    int defaultPos[2];
 
     // loading screen works
     if (currentState_ == LOADING_SCREEN) {
@@ -452,7 +447,6 @@ void renderSystemMain(GAMESTATE &currentState_) {
 
         // printf is 0 indexed
         mainLCD.printf("%c%c%c%c%c", 0, 1, 2, 3, 4);    
-
         mainLCD.locate(2, 2);
         mainLCD.printf("Press any button ");
         mainLCD.locate(5, 3);
@@ -479,24 +473,11 @@ void renderSystemMain(GAMESTATE &currentState_) {
             drawn = false;
         }
         
-
-
         mainLCD.locate(positionComponent[0].x, 1);
         mainLCD.printf("%c", 5);
-
-        switch (0)//need to get the logic for the position selection and when it presses the button it chooses it  
-        {
-            case 0: playerCharacter = new Fighter(5, 3, 2, defaultPos, 'F');   break;
-            case 1: playerCharacter = new Berserker(5, 3, 2, defaultPos, 'B'); break;
-            case 2: playerCharacter = new Mage(5, 3, 2, defaultPos, 'M');      break;
-            case 3: playerCharacter = new Ranger(5, 3, 2, defaultPos, 'R');    break;
-            case 4: playerCharacter = new Tank(5, 3, 2, defaultPos, 'T');      break;
-        }
-
        
         mainLCD.locate(6, 2);
         mainLCD.printf("%c %c %c %c %c", 0, 1, 2, 3, 4);
-
 
     } else if (currentState_ == MENU) {
 
@@ -506,8 +487,6 @@ void renderSystemMain(GAMESTATE &currentState_) {
          // write the new custom characters into memory *NEED TO Have like rock and shit
           mainLCD.writeCustomCharacter(CharacterSymbols.fighter, 1);
 
-          
-        
     } else if (currentState_ == FIGHT) {
 
         for ( int i = 0; i < maxEntities; i++ ) {
@@ -568,12 +547,11 @@ void movementSystem(GAMESTATE &currentGameState_) {
             
         if (currentDirection == RIGHT) {
 
-            if ( positionComponent[0].x == 15) { } else positionComponent[0].x  += 2; 
-
+            if ( positionComponent[0].x <= 14) positionComponent[0].x  += 2;
            
         } else if (currentDirection == LEFT) {
 
-            if (positionComponent[0].x == 0) { } else positionComponent[0].x  -= 2;     
+            if (positionComponent[0].x >= 6 ) positionComponent[0].x  -= 2;
              
         }
     }   else if (currentGameState_ == MAP) {
@@ -582,23 +560,34 @@ void movementSystem(GAMESTATE &currentGameState_) {
     } 
 }
 
-void systemManager(GAMESTATE &currentGameState_) {
+void stateManager(GAMESTATE &currentGameState_) {
     // to be completed
     // intended to disable/enable different systems as the game progressed
     // logic for state transitions goes here
 
+    int defaultPos[2] {0, 1};
     currentDirection = inputSystem();
+
     if (currentGameState_ == LOADING_SCREEN ) {
 
         if (currentDirection != NEUTRAL) {
             currentGameState_ = CHARACTER_SELECT;
         }
-    } 
-    else if (currentGameState_ == CHARACTER_SELECT) {
-        
-    } else if (currentGameState_ == MAP ) {
 
-    } else if (currentGameState_ == MENU) { 
+    } else if (currentGameState_ == CHARACTER_SELECT) {
+
+        if ((mainJoystick.reportPush()) && (playerCharacter == nullptr)) {
+            
+            switch (positionComponent[0].x)//need to get the logic for the position selection and when it presses the button it chooses it  
+            {
+                case 5: playerCharacter = new Fighter(5, 3, 2, defaultPos, 'F');   break;
+                case 7: playerCharacter = new Berserker(5, 3, 2, defaultPos, 'B'); break;
+                case 9: playerCharacter = new Mage(5, 3, 2, defaultPos, 'M');      break;
+                case 11: playerCharacter = new Ranger(5, 3, 2, defaultPos, 'R');   break;
+                case 13: playerCharacter = new Tank(5, 3, 2, defaultPos, 'T');     break;
+            }
+            selectionConfirmed = true;
+        }
 
     } else if (currentGameState_ == FIGHT) {
 
@@ -644,7 +633,7 @@ int main() {
 
         renderSystemMain(currentGameState);
         movementSystem(currentGameState);
-        systemManager(currentGameState);
+        stateManager(currentGameState);
 
         thread_sleep_for(REFRESH_RATE);        
     }
