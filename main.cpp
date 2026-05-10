@@ -23,8 +23,8 @@ Thread sideLCDWorkerThread;
 Thread joystickWorkerThread;
 
 // Buttons for user input
-//DigitalIn selectorButton(D10);
-//DigitalIn menuButton(D11);
+// DigitalIn selectorButton(D10);
+// DigitalIn menuButton(D11);
 
 int REFRESH_RATE;
 bool drawn = false;
@@ -199,9 +199,34 @@ public:
     char gettype()
         {return Type_;}
 
-    void Move(char Direction)
-    {
-        //Do move stuff here
+    void Move(DIRECTION myDirection_) {
+
+        switch(myDirection_) {
+
+            case UP:
+            Position_[1] -= 1;
+            break;
+
+            case DOWN:
+            Position_[1] += 1;
+            break;
+
+            case LEFT:
+            Position_[0] -= 1;
+            break;
+
+            case RIGHT:
+            Position_[0] += 1;
+            break;
+
+            case NEUTRAL:
+            break;
+
+            case NULLPOSITION:
+            break;
+
+        }
+        
     }
 
 };
@@ -220,10 +245,10 @@ public:
     }
 };
 
-class BERSERKER : public CharacterBase
+class Berserker : public CharacterBase
 {
 public:
-    BERSERKER(int Health, int Movement, int Damage, int Position[2], char Type)
+    Berserker(int Health, int Movement, int Damage, int Position[2], char Type)
         : CharacterBase(Health, Movement, Damage, Position,Type)
     {
         Health_ = Health;
@@ -234,10 +259,10 @@ public:
     }
 };
 
-class MAGE : public CharacterBase
+class Mage : public CharacterBase
 {
 public:
-    MAGE(int Health, int Movement, int Damage, int Position[2], char Type)
+    Mage(int Health, int Movement, int Damage, int Position[2], char Type)
         : CharacterBase(Health, Movement, Damage, Position,Type)
     {
         Health_ = Health;
@@ -248,10 +273,10 @@ public:
     }
 };
 
-class RANGER : public CharacterBase
+class Ranger : public CharacterBase
 {
 public:
-    RANGER(int Health, int Movement, int Damage, int Position[2], char Type)
+    Ranger(int Health, int Movement, int Damage, int Position[2], char Type)
         : CharacterBase(Health, Movement, Damage, Position,Type)
     {
        Health_ = Health;
@@ -262,10 +287,10 @@ public:
     }
 };
 
-class TANK : public CharacterBase
+class Tank : public CharacterBase
 {
 public:
-    TANK(int Health, int Movement, int Damage, int Position[2], char Type)
+    Tank(int Health, int Movement, int Damage, int Position[2], char Type)
         : CharacterBase(Health, Movement, Damage, Position,Type)
     {
         Health_ = Health;
@@ -279,22 +304,9 @@ public:
 
 CharacterBase* playerCharacter = nullptr;
 
-/*
-if (classNumber == 0) {
-        playClass = BERSERKER;
-    } else if (classNumber == 1) {
-        playClass = MAGE;
-    } else if (classNumber == 1) {
-        playClass = RANGER;
-    } else if (classNumber == 1) {
-        playClass = TANK;
-    }*/
-
 // Systems
 
 // initialization system
-
-char playerA[] {0x1F, 0x1F, 0x0E, 0x0E, 0x0E, 0x0E, 0x1F, 0x1F};
 
 void setIconSymbols(Entity entity_, const char* symbol_) { 
     memcpy(iconComponent[entity_].symbol, symbol_, 8);
@@ -305,7 +317,6 @@ void setIconSymbols(Entity entity_, const char* symbol_) {
 void initializeEntities(Entity id, uint16_t positionX_, uint16_t positionY_, uint16_t velocityX_, uint16_t velocityY_,  const char * symbol_) { 
     
     // this is where we set all the entitiy attributes
-
     positionComponent[id].x = positionX_;
     positionComponent[id].y = positionY_;
     
@@ -313,7 +324,6 @@ void initializeEntities(Entity id, uint16_t positionX_, uint16_t positionY_, uin
     velocityComponent[id].changeY = velocityY_;
 
     setIconSymbols(id, symbol_);
-
 }
 
 
@@ -399,19 +409,25 @@ void renderSystemSide(GAMESTATE currentState_) {
         sideLCD.writeCustomCharacter(CharacterSymbols.healthSymbol, 1);
         sideLCD.writeCustomCharacter(CharacterSymbols.halfhealthSymbol, 2);
         sideLCD.writeCustomCharacter(CharacterSymbols.manaSymbol, 3);
-
+        
+        /*
         for ( int i = 0; i < fightAttrComponent[0].health; i++ ) { 
             sideLCD.locate(0,0);
             sideLCD.printf("%c", i);
 
-        }
+        }*/
 
+    } else if (currentState_ == END_SCREEN) {
+
+        sideLCD.cls();
+        sideLCD.locate(0, 0);
+        sideLCD.printf(" Press any button ");
+        
     }
 }
 
 void renderSystemMain(GAMESTATE &currentState_) {
 
-    
     int defaultPos[2];
 
     // loading screen works
@@ -433,7 +449,8 @@ void renderSystemMain(GAMESTATE &currentState_) {
             
             drawn = true;
         }
-        // printf is annoyingly 0 indexed: nah being 0 indexed way better
+
+        // printf is 0 indexed
         mainLCD.printf("%c%c%c%c%c", 0, 1, 2, 3, 4);    
 
         mainLCD.locate(2, 2);
@@ -441,13 +458,8 @@ void renderSystemMain(GAMESTATE &currentState_) {
         mainLCD.locate(5, 3);
         mainLCD.printf("to start..");
 
-
-        // place holder for now - should wait for button press to start
-
-
-        //currentState_ = CHARACTER_SELECT;
-
     } else if (currentState_ == CHARACTER_SELECT) {
+
         // this kinda works but input needs to be sorted first
         mainLCD.cls();
 
@@ -462,7 +474,6 @@ void renderSystemMain(GAMESTATE &currentState_) {
 
             // write selector into memory
             mainLCD.writeCustomCharacter(CharacterSymbols.symbolSelector, 6);
-            
 
             // set drawn = true so these dont have to be re-rendered
             drawn = false;
@@ -473,37 +484,23 @@ void renderSystemMain(GAMESTATE &currentState_) {
         mainLCD.locate(positionComponent[0].x, 1);
         mainLCD.printf("%c", 5);
 
-        switch (0)//need to get the logic for the position selection and when it press the button it choices it  
+        switch (0)//need to get the logic for the position selection and when it presses the button it chooses it  
         {
             case 0: playerCharacter = new Fighter(5, 3, 2, defaultPos, 'F');   break;
-            case 1: playerCharacter = new BERSERKER(5, 3, 2, defaultPos, 'B'); break;
-            case 2: playerCharacter = new MAGE(5, 3, 2, defaultPos, 'M');      break;
-            case 3: playerCharacter = new RANGER(5, 3, 2, defaultPos, 'R');    break;
-            case 4: playerCharacter = new TANK(5, 3, 2, defaultPos, 'T');      break;
+            case 1: playerCharacter = new Berserker(5, 3, 2, defaultPos, 'B'); break;
+            case 2: playerCharacter = new Mage(5, 3, 2, defaultPos, 'M');      break;
+            case 3: playerCharacter = new Ranger(5, 3, 2, defaultPos, 'R');    break;
+            case 4: playerCharacter = new Tank(5, 3, 2, defaultPos, 'T');      break;
         }
 
-        
-        // draw the character icons on screen 
-        //mainLCD.locate(0, 0);
-        //mainLCD.printf("%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c", 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128);
-        
-        //mainLCD.locate(0, 1);
-        //mainLCD.printf("%c",128);
-        //mainLCD.locate(19, 1);
-        //mainLCD.printf("%c",128);
-
-        //mainLCD.locate(0, 2);
-        //mainLCD.printf("%c     %c %c %c %c %c    %c", 128, 0, 1, 2, 3, 4, 128);
-        
+       
         mainLCD.locate(6, 2);
         mainLCD.printf("%c %c %c %c %c", 0, 1, 2, 3, 4);
 
 
-        //mainLCD.locate(0, 3);
-        //mainLCD.printf("%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c", 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128);
-
     } else if (currentState_ == MENU) {
 
+        
     } else if (currentState_ == MAP) {
 
          // write the new custom characters into memory *NEED TO Have like rock and shit
@@ -522,16 +519,21 @@ void renderSystemMain(GAMESTATE &currentState_) {
                 mainLCD.printf("%c", 0);
             }
         }
+
+    } else if (currentState_ == END_SCREEN) {
+        mainLCD.cls();
+       
+        mainLCD.locate(0, 1);
+        mainLCD.printf("   GAME OVER   ");
+
     }
 }
 
 
-
 // most likely going to run in a separate thread
-DIRECTION inputSystem(GAMESTATE currentState_) {
+DIRECTION inputSystem() {
     
     // Joystick input
-    
     // by calculating the magnitude of the joysticks position then checking one of the coordinates we can identify what direction it is pointing
    
     int x_fixed { (int)(mainJoystick.reportPosition()[0] * 10) };
@@ -558,13 +560,34 @@ DIRECTION inputSystem(GAMESTATE currentState_) {
 
 }
 
-
 // movementSystem for entities
-
 void movementSystem(GAMESTATE &currentGameState_) {
+    currentDirection = inputSystem();
 
-    
-    currentDirection = inputSystem(currentGameState_);
+     if (currentGameState_ == CHARACTER_SELECT) {
+            
+        if (currentDirection == RIGHT) {
+
+            if ( positionComponent[0].x == 15) { } else positionComponent[0].x  += 2; 
+
+           
+        } else if (currentDirection == LEFT) {
+
+            if (positionComponent[0].x == 0) { } else positionComponent[0].x  -= 2;     
+             
+        }
+    }   else if (currentGameState_ == MAP) {
+
+        playerCharacter -> Move(currentDirection);
+    } 
+}
+
+void systemManager(GAMESTATE &currentGameState_) {
+    // to be completed
+    // intended to disable/enable different systems as the game progressed
+    // logic for state transitions goes here
+
+    currentDirection = inputSystem();
     if (currentGameState_ == LOADING_SCREEN ) {
 
         if (currentDirection != NEUTRAL) {
@@ -572,29 +595,18 @@ void movementSystem(GAMESTATE &currentGameState_) {
         }
     } 
     else if (currentGameState_ == CHARACTER_SELECT) {
-            
-        if (currentDirection == RIGHT) {
-
-            if ( positionComponent[0].x == 15) { } else positionComponent[0].x  += 2;    
         
-        } else if (currentDirection == LEFT) {
+    } else if (currentGameState_ == MAP ) {
 
-            if (positionComponent[0].x == 0) { } else positionComponent[0].x  -= 2;     
-             
+    } else if (currentGameState_ == MENU) { 
+
+    } else if (currentGameState_ == FIGHT) {
+
+    } else if (currentGameState_ == END_SCREEN) {
+
+        if (currentDirection != NEUTRAL) {
+            currentGameState_ = LOADING_SCREEN;
         }
-
-    }
-    else if (currentGameState_ == MAP )
-    {
-
-    }
-}
-
-void systemManager() { 
-    // to be completed
-
-    if (currentGameState == LOADING_SCREEN) {
-         
     }
 }
 
@@ -612,12 +624,10 @@ void joystickWorkerThreadFn() {
 
     while (true) {
         mainJoystick.reportPush();
-
+        inputSystem();
     }
 
 }
-
-
 
 int main() {
 
@@ -632,11 +642,11 @@ int main() {
 
     while (true) {
 
-
         renderSystemMain(currentGameState);
         movementSystem(currentGameState);
+        systemManager(currentGameState);
+
         thread_sleep_for(REFRESH_RATE);        
-        
     }
 
 }
