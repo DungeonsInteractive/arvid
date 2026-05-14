@@ -3,7 +3,7 @@
 #include "Joystick.h"
 #include "TextLCD_CC.h"
 #include "mbed.h"
-
+#include <vector>
 using namespace std;
 using Entity = uint8_t;
 
@@ -52,23 +52,26 @@ struct  {
     char swordtwoC[8] {  0x06, 0x06, 0x1E, 0x1F, 0x1F, 0x1E, 0x06, 0x06};
     char swordtwoD[8] {  0x00, 0x00, 0x02, 0x1E, 0x1E, 0x02, 0x00, 0x00};
 
-    //Characters  need actualt desgin
-    char Charfighter[8] {  0x00, 0x00, 0x02, 0x1E, 0x1E, 0x02, 0x00, 0x00};
-
     // mana and health
     char manaSymbol[8] { 0x00, 0x00, 0x0E, 0x04, 0x0E, 0x0E, 0x0E, 0x00 };
     char healthSymbol[8] { 0x00, 0x00, 0x0A, 0x1F, 0x1F, 0x0E, 0x04, 0x00 };
     char halfhealthSymbol[8] { 0x00, 0x00, 0x0A, 0x1F, 0x1F, 0x0E, 0x04, 0x00 };
     
-    
+    // Map Icons
+    char playerIcon[8] { 0x00, 0x00, 0x04, 0x0E, 0x04, 0x04, 0x0A, 0x00 };
+    char fightPortal[8] { 0x00, 0x00, 0x0E, 0x02, 0x08, 0x0E, 0x00, 0x00 };
+    char bossFight[8] { 0x00, 0x04, 0x0A, 0x11, 0x0A, 0x04, 0x11, 0x0E };
+    char restrictedArea[8] { 0x1D, 0x1A, 0x16, 0x0D, 0x16, 0x0D, 0x0B, 0x17 };
+    char treasureBox[8] { 0x00, 0x00, 0x0E, 0x00, 0x04, 0x0E, 0x00, 0x00 };
+
 } CharacterSymbols;
 
 struct {
     // to be filled later 
     char testmap[4][20] {
-        { 1, 1, 1, 1, 2, 2, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1},
+        { 1, 1, 1, 1, 2, 2, 0, 0, 3, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1},
         { 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 2, 0, 0, 0, 0},
-        { 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0},
+        { 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 3, 0, 0, 0, 0, 4},
         { 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 2, 1, 1, 0},
     };
 
@@ -85,7 +88,11 @@ struct {
         { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
         { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
     };
+
 } GameMaps;
+
+vector <vector<int>> currentMap(4, vector<int>(20));
+vector <vector<int>> prevMap(4, vector<int>(20));
 
 
 /* ENUMS */
@@ -118,12 +125,12 @@ enum CLASS {
 /* SYSTEM VARIABLES */
 int REFRESH_RATE;
 bool drawn = false;
-bool drawnB = false;
-int start = 0;
+bool clearMain = true;
+bool redrawMain = false;
+int swordLocation = 0;
 
 GAMESTATE currentGameState;
 DIRECTION currentDirection;
-bool SW3ACTIVE, SW4ACTIVE, SW5ACTIVE, SW6ACTIVE, menuButtonACTIVE, selectorButtonActive;
 bool selectionConfirmed;
 
 
@@ -188,19 +195,19 @@ class CharacterBase {
             switch(myDirection_) {
 
                 case UP:
-                Position_[1] -= 1;
+                    if (Position_[1] > 0) Position_[1] -= 1;
                 break;
 
                 case DOWN:
-                Position_[1] += 1;
+                    if (Position_[1] < 4) Position_[1] += 1;
                 break;
 
                 case LEFT:
-                Position_[0] -= 1;
+                    if (Position_[0] > 0) Position_[0] -= 1;
                 break;
 
                 case RIGHT:
-                Position_[0] += 1;
+                    if (Position_[0] < 19) Position_[0] += 1;
                 break;
 
                 case NEUTRAL:
@@ -362,7 +369,7 @@ void secondaryRenderSystem() {
     if (currentGameState == LOADING_SCREEN) { 
         sideLCD.cls();
 
-        if (!drawnB) {
+        if (clearMain) {
             
             // sword one
             sideLCD.writeCustomCharacter(CharacterSymbols.swordoneA, 1); // bottom
@@ -376,13 +383,12 @@ void secondaryRenderSystem() {
             sideLCD.writeCustomCharacter(CharacterSymbols.swordtwoC, 7); 
             sideLCD.writeCustomCharacter(CharacterSymbols.swordtwoD, 8); // bottom
 
-            drawnB = true;
         }   
 
-        sideLCD.locate(start, 0);
+        sideLCD.locate(swordLocation, 0);
 
         
-        if (start == 13) {
+        if (swordLocation == 13) {
             sideLCD.printf("%c%c%c", 0, 1, 2 );
             sideLCD.locate(0, 0);
             sideLCD.printf("%c", 3 );
@@ -392,7 +398,7 @@ void secondaryRenderSystem() {
             sideLCD.locate(15, 1);
             sideLCD.printf("%c", 4);
 
-        } else if (start == 14) {
+        } else if (swordLocation == 14) {
             sideLCD.printf("%c%c", 0, 1 );    
             sideLCD.locate(0, 0);
             sideLCD.printf("%c%c", 2, 3 );
@@ -402,7 +408,7 @@ void secondaryRenderSystem() {
             sideLCD.locate(14, 1);
             sideLCD.printf("%c%c", 4, 5);
           
-        } else if (start == 15) {
+        } else if (swordLocation == 15) {
             sideLCD.printf("%c", 0 );
             sideLCD.locate(0, 0);
             sideLCD.printf("%c%c%c", 1, 2, 3 );
@@ -412,20 +418,18 @@ void secondaryRenderSystem() {
             sideLCD.locate(0, 1);
             sideLCD.printf("%c", 7 );
 
-            start = -1;    
+            swordLocation = -1;    
 
         } else {
             sideLCD.printf("%c%c%c%c", 0, 1, 2, 3);
-            sideLCD.locate(12 -start, 1);
+            sideLCD.locate(12 -swordLocation, 1);
             sideLCD.printf("%c%c%c%c", 4, 5, 6, 7);
         }
             
-        start += 1;
+        swordLocation += 1;
         
     } else if (currentGameState == CHARACTER_SELECT) {
-            
-            sideLCD.cls();
-            
+                        
             sideLCD.locate(0, 0);
             sideLCD.printf("%c%c%c%c  %c%c%c%c  %c%c%c%c", 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3);
             sideLCD.locate(1, 1);
@@ -433,15 +437,18 @@ void secondaryRenderSystem() {
 
     } else if (currentGameState == MAP) {
 
-        sideLCD.cls();
-
-        sideLCD.locate(0, 0);
+        if (clearMain) {
+            sideLCD.cls();
+        }
+        sideLCD.locate(1, 0);
         sideLCD.printf("Reach the BOSS");
         sideLCD.writeCustomCharacter(CharacterSymbols.healthSymbol, 1);
 
         // displays player health on screen
-        for (int i = 1; i < playerCharacter->gethp(); i++) {
-            sideLCD.locate(i, 1);
+        sideLCD.locate(0, 1);
+        sideLCD.printf("H:");
+        for (int i = 0; i < playerCharacter->gethp(); i++) {
+            sideLCD.locate(i+2, 1);
             sideLCD.printf("%c", 0);
         }
 
@@ -477,6 +484,10 @@ void secondaryLCDThreadFn() {
     }
 }
 
+void mapUpdater() {
+
+}
+
 void primaryRenderSystem() {
 
     // loading screen works
@@ -487,7 +498,7 @@ void primaryRenderSystem() {
         mainLCD.printf("Welcome to");
         mainLCD.locate(8, 1);
         
-        if (!drawn) {
+        if (clearMain) {
                 
             // remember writeCustomCharacter is not 0 indexed its 1 indexed
             mainLCD.writeCustomCharacter(CharacterSymbols.symbolA, 1);
@@ -496,7 +507,7 @@ void primaryRenderSystem() {
             mainLCD.writeCustomCharacter(CharacterSymbols.symbolI, 4);
             mainLCD.writeCustomCharacter(CharacterSymbols.symbolD, 5);
             
-            drawn = true;
+            clearMain = false;
         }
 
         // printf is 0 indexed
@@ -511,7 +522,7 @@ void primaryRenderSystem() {
         // this kinda works but input needs to be sorted first
         mainLCD.cls();
 
-        if (drawn) { 
+        if (clearMain) { 
 
             // write the new custom characters into memory
             mainLCD.writeCustomCharacter(CharacterSymbols.fighter, 1);
@@ -524,7 +535,7 @@ void primaryRenderSystem() {
             mainLCD.writeCustomCharacter(CharacterSymbols.symbolSelector, 6);
 
             // set drawn = true so these dont have to be re-rendered
-            drawn = false;
+            clearMain = false;
         }
         
         mainLCD.locate(positionComponent[0].x, 1);
@@ -536,40 +547,62 @@ void primaryRenderSystem() {
     } else if (currentGameState == MENU) {      
     } else if (currentGameState == MAP) {
 
-        mainLCD.cls();
+        if (clearMain) {
+            
+            mainLCD.cls();
 
-        // write the new custom characters into memory *NEED TO Have like rock and shit
-        mainLCD.writeCustomCharacter(CharacterSymbols.fighter, 1);
+            // write the new custom characters into memory 
+            mainLCD.writeCustomCharacter(CharacterSymbols.playerIcon, 1);
+            mainLCD.writeCustomCharacter(CharacterSymbols.fightPortal, 2);
+            mainLCD.writeCustomCharacter(CharacterSymbols.bossFight, 3);
+            mainLCD.writeCustomCharacter(CharacterSymbols.treasureBox, 4);
+            mainLCD.writeCustomCharacter(CharacterSymbols.restrictedArea, 5);
 
-        for (int i = 0; i < 4; i++) {
-            mainLCD.locate(0, i);
 
+            for (int y = 0; y < 4; y++) for (int x = 0; x < 20; x++) currentMap[y][x] = GameMaps.testmap[y][x];
+            
+            clearMain = false;
+        }
+    
+        for (int y = 0; y < 4; y++) {
             for ( int x = 0; x < 20; x++) {
 
-                switch(GameMaps.testmap[i][x]) {
+                if (prevMap[y][x] != currentMap[y][x]) {
+                    mainLCD.locate(x, y);
+                    
+                    switch(currentMap[y][x]) {
 
-                    case 0:
-                    mainLCD.printf(" ");
-                    break;
+                        case 0:
+                        mainLCD.printf(" ");
+                        break;
 
-                    case 1:
-                    mainLCD.printf("#");
-                    break;
+                        case 1:
+                        // prints restricted area
+                        mainLCD.printf("%c", 4);
+                        break;
 
-                    case 2:
-                    mainLCD.printf("T");
-                    break;
+                        case 2:
+                        // prints treasure box
+                        mainLCD.printf("%c", 3);
+                        break;
+
+                        case 3:
+                        // prints fight portal
+                        mainLCD.printf("%c", 1);
+                        break;
+
+                        case 4:
+                        // prints bossfight portal
+                        mainLCD.printf("%c", 2);
+                        break;
+           
+                        case 5:
+                        // prints player icon
+                        mainLCD.printf("%c", 0);
+                    }
                 }
             }
         }
-
-        /*
-        int prevX {playerCharacter -> getPositionX()};
-        int prevY {playerCharacter -> getPositionY()};
-        */
-
-        //mainLCD.locate(playerCharacter -> getPositionX(), playerCharacter -> getPositionY());
-        //mainLCD.printf("%c", 0);
 
     } else if (currentGameState == FIGHT) {
 
@@ -587,7 +620,7 @@ void primaryRenderSystem() {
         mainLCD.cls();
        
         mainLCD.locate(0, 1);
-        mainLCD.printf("   GAME OVER   ");
+        mainLCD.printf("   VICTORY   ");
 
     }
 }
@@ -619,7 +652,12 @@ void movementSystem() {
         }
     } else if (currentGameState == MAP) {
 
-        playerCharacter -> Move(currentDirection);
+        if (currentDirection != NEUTRAL) {
+            for (int y = 0; y < 4; y++) for (int x = 0; x < 20; x++) prevMap[y][x] = currentMap[y][x];
+            currentMap[playerCharacter->getPositionY()][playerCharacter->getPositionX()] = 0;
+            playerCharacter -> Move(currentDirection);            
+            currentMap[playerCharacter->getPositionY()][playerCharacter->getPositionX()] = 5;
+        }
 
     } else if (currentGameState == MENU) {
     } else if (currentGameState == END_SCREEN ){
@@ -637,8 +675,9 @@ void stateManager(GAMESTATE &currentGameState_) {
 
     if (currentGameState_ == LOADING_SCREEN ) {
 
-        if (currentDirection != NEUTRAL) {
+        if ((currentDirection != NEUTRAL) || !SW3 || !SW4 || !SW5 || !SW5 || !SW6) {
             currentGameState_ = CHARACTER_SELECT;
+            clearMain = true;
         }
 
     } else if (currentGameState_ == CHARACTER_SELECT) {
@@ -655,9 +694,11 @@ void stateManager(GAMESTATE &currentGameState_) {
             }
             selectionConfirmed = true;
             currentGameState_ = MAP;
+            clearMain = true;
         }
 
-    } else if (currentGameState_ == MAP) { 
+    } else if (currentGameState_ == MAP) {
+
     } else if (currentGameState_ == FIGHT) {
     } else if (currentGameState_ == END_SCREEN) {
 
@@ -666,7 +707,6 @@ void stateManager(GAMESTATE &currentGameState_) {
         }
     }
 }
-
 
 
 int main() {
@@ -685,7 +725,6 @@ int main() {
     // Game Loop
     while (true) {
 
-        // take render system out of here later
         movementSystem();
         primaryRenderSystem();
         stateManager(currentGameState);
