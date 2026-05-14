@@ -3,34 +3,26 @@
 #include "Joystick.h"
 #include "TextLCD_CC.h"
 #include "mbed.h"
-#include <cstdint>
-#include <cstdio>
-#include <cstring>
 
 using namespace std;
 using Entity = uint8_t;
 
+
+/* INITIALISATION*/
 // Initialise main and side LCDs using morpho and digital pins
-TextLCD sideLCD(D11, D10, D4, D5, D6, D7, TextLCD::LCD16x2);
-TextLCD mainLCD(D9, D8, D0, D1, D2, D3, TextLCD::LCD20x4);
+TextLCD sideLCD(D10, D11, D4, D5, D6, D7, TextLCD::LCD16x2), mainLCD(D9, D8, D0, D1, D2, D3, TextLCD::LCD20x4);
 
 // Joystick for controlling directional movement
 Joystick mainJoystick(A0, A1, PC_3);
 
+// Button Inputs
+DigitalIn selectorButton(PA_0, PullUp), menuButton(PA_1, PullUp), SW3(PB_12, PullUp), SW4(PB_1, PullUp),  SW5(PB_11, PullUp), SW6(PA_4, PullUp);
+
 // Threads
+Thread secondaryLCDThread, inputThread;
 
-Thread sideLCDWorkerThread;
-Thread joystickWorkerThread;
 
-// Buttons for user input
-// DigitalIn selectorButton(D10);
-// DigitalIn menuButton(D11);
-
-int REFRESH_RATE;
-bool drawn = false;
-bool drawnB = false;
-int start = 0;
-
+/* GAME MEDIA */
 struct  {
     // game symbols
     char symbolA[8] { 0x0E, 0x1F, 0x1B, 0x1B, 0x1F, 0x1B, 0x1B, 0x1B };
@@ -71,11 +63,32 @@ struct  {
     
 } CharacterSymbols;
 
-
 struct {
     // to be filled later 
+    char testmap[4][20] {
+        { 1, 1, 1, 1, 2, 2, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1},
+        { 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 2, 0, 0, 0, 0},
+        { 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0},
+        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 2, 1, 1, 0},
+    };
+
+    char mapA[4][20] {
+        { 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1},
+        { 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1},
+        { 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1},
+        { 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0}
+    };
+
+    char mapB[4][20] {
+        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+    };
 } GameMaps;
 
+
+/* ENUMS */
 enum DIRECTION {
     UP,
     RIGHT,
@@ -85,7 +98,6 @@ enum DIRECTION {
     NULLPOSITION
 };
 
-// store game states for future stuff
 enum GAMESTATE {
     MENU,
     CHARACTER_SELECT,
@@ -103,17 +115,169 @@ enum CLASS {
 };
 
 
-// Implementing the ECS model
+/* SYSTEM VARIABLES */
+int REFRESH_RATE;
+bool drawn = false;
+bool drawnB = false;
+int start = 0;
 
-// Entities
-
-const uint16_t maxEntities = 16;
-Entity nextEntityID = 0;
-CLASS playClass;
 GAMESTATE currentGameState;
 DIRECTION currentDirection;
-bool selectionConfirmed = false;
+bool SW3ACTIVE, SW4ACTIVE, SW5ACTIVE, SW6ACTIVE, menuButtonACTIVE, selectorButtonActive;
+bool selectionConfirmed;
+
+
+// Entities
+const uint16_t maxEntities = 16;
+Entity nextEntityID = 0;
 bool SELECT[maxEntities];
+
+
+class CharacterBase {
+    protected:
+        int Health_;
+        int Movement_;
+        int Damage_;
+        int Position_[2];
+        char Type_ = ' ';
+
+    public:
+        CharacterBase(int Health, int Movement, int Damage, int Position[2], char Type)
+        {
+            Health_ = Health;
+            Movement_ = Movement;
+            Damage_ = Damage;
+            memcpy(Position_, Position, sizeof(Position_));
+            Type_ = Type;
+        }
+
+        void UpgradeHp()
+            {Health_++;}
+            
+        void UpgradeM()
+            {Movement_++;}
+
+        void UpgradeDamage()
+            {Damage_++;}
+            
+        void TakeDamage(int damge)
+        {
+            Health_ = Health_ - damge;
+        }
+            
+        int gethp()
+            {return Health_;}
+
+        int getMovement()
+            {return Movement_;}
+
+        int getDamage()
+            {return Damage_;}
+
+        char gettype()
+            {return Type_;}
+
+        int getPositionX() 
+            {return Position_[0];}
+
+        int getPositionY()
+            {return Position_[1];}
+
+        void Move(DIRECTION myDirection_) {
+
+            switch(myDirection_) {
+
+                case UP:
+                Position_[1] -= 1;
+                break;
+
+                case DOWN:
+                Position_[1] += 1;
+                break;
+
+                case LEFT:
+                Position_[0] -= 1;
+                break;
+
+                case RIGHT:
+                Position_[0] += 1;
+                break;
+
+                case NEUTRAL:
+                break;
+
+                case NULLPOSITION:
+                break;
+            }   
+        }
+};
+
+class Fighter : public CharacterBase {
+    public:
+        Fighter(int Health, int Movement, int Damage, int Position[2], char Type)
+            : CharacterBase(Health, Movement, Damage, Position,Type)
+        { //Stat can be changed just for testing balancing can be done later
+            Health_ = Health;
+            Movement_ = Movement;
+            Damage_ = Damage;
+            memcpy(Position_, Position, sizeof(Position_));
+            Type_ = Type;
+        }
+};
+
+class Berserker : public CharacterBase {
+    public:
+        Berserker(int Health, int Movement, int Damage, int Position[2], char Type)
+            : CharacterBase(Health, Movement, Damage, Position,Type)
+        {
+            Health_ = Health;
+            Movement_ = Movement;
+            Damage_ = Damage;
+            memcpy(Position_, Position, sizeof(Position_));
+            Type_ = Type;
+        }
+};
+
+class Mage : public CharacterBase {
+    public:
+        Mage(int Health, int Movement, int Damage, int Position[2], char Type)
+            : CharacterBase(Health, Movement, Damage, Position,Type)
+        {
+            Health_ = Health;
+            Movement_ = Movement;
+            Damage_ = Damage;
+            memcpy(Position_, Position, sizeof(Position_));
+            Type_ = Type;
+        }
+};
+
+class Ranger : public CharacterBase {
+    public:
+        Ranger(int Health, int Movement, int Damage, int Position[2], char Type)
+            : CharacterBase(Health, Movement, Damage, Position,Type)
+        {
+        Health_ = Health;
+            Movement_ = Movement;
+            Damage_ = Damage;
+            memcpy(Position_, Position, sizeof(Position_));
+            Type_ = Type;
+        }
+};
+
+class Tank : public CharacterBase {
+    public:
+        Tank(int Health, int Movement, int Damage, int Position[2], char Type)
+            : CharacterBase(Health, Movement, Damage, Position,Type)
+        {
+            Health_ = Health;
+            Movement_ = Movement;
+            Damage_ = Damage;
+            memcpy(Position_, Position, sizeof(Position_));
+            Type_ = Type;
+        }
+};
+
+CharacterBase* playerCharacter = nullptr;
 
 // Components
 // Boolean arrays keep track of what entities have what components
@@ -140,174 +304,15 @@ Icons iconComponent[maxEntities];
 bool hasIcon[maxEntities];
 
 
-//struct FightAttributes { 
-//    int16_t health;
-//    int16_t mana;
-//};
-//FightAttributes fightAttrComponent[maxEntities];
-//bool hasFightAttributes[maxEntities];
 
-
-class CharacterBase
-{
-protected:
-    int Health_;
-    int Movement_;
-    int Damage_;
-    int Position_[2];
-    char Type_ = ' ';
-
-public:
-    CharacterBase(int Health, int Movement, int Damage, int Position[2], char Type)
-    {
-        Health_ = Health;
-        Movement_ = Movement;
-        Damage_ = Damage;
-        memcpy(Position_, Position, sizeof(Position_));
-        Type_ = Type;
-    }
-
-    void UpgradeHp()
-        {Health_++;}
-        
-    void UpgradeM()
-        {Movement_++;}
-
-    void UpgradeDamage()
-        {Damage_++;}
-        
-    void TakeDamage(int damge)
-    {
-        Health_ = Health_ - damge;
-    }
-        
-    int gethp()
-        {return Health_;}
-
-    int getMovement()
-        {return Movement_;}
-
-    int getDamage()
-        {return Damage_;}
-
-    char gettype()
-        {return Type_;}
-
-    void Move(DIRECTION myDirection_) {
-
-        switch(myDirection_) {
-
-            case UP:
-            Position_[1] -= 1;
-            break;
-
-            case DOWN:
-            Position_[1] += 1;
-            break;
-
-            case LEFT:
-            Position_[0] -= 1;
-            break;
-
-            case RIGHT:
-            Position_[0] += 1;
-            break;
-
-            case NEUTRAL:
-            break;
-
-            case NULLPOSITION:
-            break;
-
-        }
-        
-    }
-
-};
-
-class Fighter : public CharacterBase
-{
-public:
-    Fighter(int Health, int Movement, int Damage, int Position[2], char Type)
-        : CharacterBase(Health, Movement, Damage, Position,Type)
-    { //Stat can be changed just for testing balancing can be done later
-        Health_ = Health;
-        Movement_ = Movement;
-        Damage_ = Damage;
-        memcpy(Position_, Position, sizeof(Position_));
-        Type_ = Type;
-    }
-};
-
-class Berserker : public CharacterBase
-{
-public:
-    Berserker(int Health, int Movement, int Damage, int Position[2], char Type)
-        : CharacterBase(Health, Movement, Damage, Position,Type)
-    {
-        Health_ = Health;
-        Movement_ = Movement;
-        Damage_ = Damage;
-        memcpy(Position_, Position, sizeof(Position_));
-        Type_ = Type;
-    }
-};
-
-class Mage : public CharacterBase
-{
-public:
-    Mage(int Health, int Movement, int Damage, int Position[2], char Type)
-        : CharacterBase(Health, Movement, Damage, Position,Type)
-    {
-        Health_ = Health;
-        Movement_ = Movement;
-        Damage_ = Damage;
-        memcpy(Position_, Position, sizeof(Position_));
-        Type_ = Type;
-    }
-};
-
-class Ranger : public CharacterBase
-{
-public:
-    Ranger(int Health, int Movement, int Damage, int Position[2], char Type)
-        : CharacterBase(Health, Movement, Damage, Position,Type)
-    {
-       Health_ = Health;
-        Movement_ = Movement;
-        Damage_ = Damage;
-        memcpy(Position_, Position, sizeof(Position_));
-        Type_ = Type;
-    }
-};
-
-class Tank : public CharacterBase
-{
-public:
-    Tank(int Health, int Movement, int Damage, int Position[2], char Type)
-        : CharacterBase(Health, Movement, Damage, Position,Type)
-    {
-        Health_ = Health;
-        Movement_ = Movement;
-        Damage_ = Damage;
-        memcpy(Position_, Position, sizeof(Position_));
-        Type_ = Type;
-    }
-};
-
-
-CharacterBase* playerCharacter = nullptr;
-
-// Systems
+/* SYSTEMS AND THREADS */
 
 // initialization system
-
 void setIconSymbols(Entity entity_, const char* symbol_) { 
     memcpy(iconComponent[entity_].symbol, symbol_, 8);
 }
 
 // helper function to initialise new entities
-
 void initializeEntities(Entity id, uint16_t positionX_, uint16_t positionY_, uint16_t velocityX_, uint16_t velocityY_,  const char * symbol_) { 
     
     // this is where we set all the entitiy attributes
@@ -320,12 +325,41 @@ void initializeEntities(Entity id, uint16_t positionX_, uint16_t positionY_, uin
     setIconSymbols(id, symbol_);
 }
 
+// most likely going to run in a separate thread
+DIRECTION joystickInputSystem() {
+    
+    // Joystick input
+    // by calculating the magnitude of the joysticks position then checking one of the coordinates we can identify what direction it is pointing
+    
+    // type casting allows us perform equality checks with rounded values
+    int x_fixed { (int)(mainJoystick.reportPosition()[0] * 10) };
+    int y_fixed { (int)(mainJoystick.reportPosition()[1] * 10) };
+    
+    if (x_fixed == 7 && y_fixed == 7) 
+        return NEUTRAL;
+    else if (x_fixed >= 7) 
+    { 
+        if (y_fixed >=7) 
+            return DOWN; 
+        else if (y_fixed < 7) 
+            return RIGHT;
+    } 
+    else if (x_fixed < 7) 
+    {
+        if (y_fixed >= 7)
+            return LEFT;
+        else if (y_fixed < 7) 
+            return UP;
+    }
+
+    return NULLPOSITION;
+
+}
 
 // render systems for main and side LCDs
-void renderSystemSide(GAMESTATE currentState_) {
+void secondaryRenderSystem() {
 
-
-    if (currentState_ == LOADING_SCREEN) { 
+    if (currentGameState == LOADING_SCREEN) { 
         sideLCD.cls();
 
         if (!drawnB) {
@@ -388,7 +422,7 @@ void renderSystemSide(GAMESTATE currentState_) {
             
         start += 1;
         
-    } else if (currentState_ == CHARACTER_SELECT) {
+    } else if (currentGameState == CHARACTER_SELECT) {
             
             sideLCD.cls();
             
@@ -397,9 +431,21 @@ void renderSystemSide(GAMESTATE currentState_) {
             sideLCD.locate(1, 1);
             sideLCD.printf("Choose a class");
 
+    } else if (currentGameState == MAP) {
 
-    } else if (currentState_ == FIGHT) {
+        sideLCD.cls();
 
+        sideLCD.locate(0, 0);
+        sideLCD.printf("Reach the BOSS");
+        sideLCD.writeCustomCharacter(CharacterSymbols.healthSymbol, 1);
+
+        // displays player health on screen
+        for (int i = 1; i < playerCharacter->gethp(); i++) {
+            sideLCD.locate(i, 1);
+            sideLCD.printf("%c", 0);
+        }
+
+    } else if (currentGameState == FIGHT) {
 
         sideLCD.cls();
         sideLCD.writeCustomCharacter(CharacterSymbols.healthSymbol, 1);
@@ -413,7 +459,7 @@ void renderSystemSide(GAMESTATE currentState_) {
 
         }*/
 
-    } else if (currentState_ == END_SCREEN) {
+    } else if (currentGameState == END_SCREEN) {
 
         sideLCD.cls();
         sideLCD.locate(0, 0);
@@ -422,11 +468,19 @@ void renderSystemSide(GAMESTATE currentState_) {
     }
 }
 
-void renderSystemMain(GAMESTATE &currentState_) {
+void secondaryLCDThreadFn() {
 
+    REFRESH_RATE = 1000;
+    while (true) {
+        secondaryRenderSystem();
+        thread_sleep_for(REFRESH_RATE);
+    }
+}
+
+void primaryRenderSystem() {
 
     // loading screen works
-    if (currentState_ == LOADING_SCREEN) {
+    if (currentGameState == LOADING_SCREEN) {
         mainLCD.cls();
 
         mainLCD.locate(5, 0);
@@ -452,7 +506,7 @@ void renderSystemMain(GAMESTATE &currentState_) {
         mainLCD.locate(5, 3);
         mainLCD.printf("to start..");
 
-    } else if (currentState_ == CHARACTER_SELECT) {
+    } else if (currentGameState == CHARACTER_SELECT) {
 
         // this kinda works but input needs to be sorted first
         mainLCD.cls();
@@ -479,15 +533,45 @@ void renderSystemMain(GAMESTATE &currentState_) {
         mainLCD.locate(6, 2);
         mainLCD.printf("%c %c %c %c %c", 0, 1, 2, 3, 4);
 
-    } else if (currentState_ == MENU) {
+    } else if (currentGameState == MENU) {      
+    } else if (currentGameState == MAP) {
 
-        
-    } else if (currentState_ == MAP) {
+        mainLCD.cls();
 
-         // write the new custom characters into memory *NEED TO Have like rock and shit
-          mainLCD.writeCustomCharacter(CharacterSymbols.fighter, 1);
+        // write the new custom characters into memory *NEED TO Have like rock and shit
+        mainLCD.writeCustomCharacter(CharacterSymbols.fighter, 1);
 
-    } else if (currentState_ == FIGHT) {
+        for (int i = 0; i < 4; i++) {
+            mainLCD.locate(0, i);
+
+            for ( int x = 0; x < 20; x++) {
+
+                switch(GameMaps.testmap[i][x]) {
+
+                    case 0:
+                    mainLCD.printf(" ");
+                    break;
+
+                    case 1:
+                    mainLCD.printf("#");
+                    break;
+
+                    case 2:
+                    mainLCD.printf("T");
+                    break;
+                }
+            }
+        }
+
+        /*
+        int prevX {playerCharacter -> getPositionX()};
+        int prevY {playerCharacter -> getPositionY()};
+        */
+
+        //mainLCD.locate(playerCharacter -> getPositionX(), playerCharacter -> getPositionY());
+        //mainLCD.printf("%c", 0);
+
+    } else if (currentGameState == FIGHT) {
 
         for ( int i = 0; i < maxEntities; i++ ) {
         
@@ -499,7 +583,7 @@ void renderSystemMain(GAMESTATE &currentState_) {
             }
         }
 
-    } else if (currentState_ == END_SCREEN) {
+    } else if (currentGameState == END_SCREEN) {
         mainLCD.cls();
        
         mainLCD.locate(0, 1);
@@ -508,56 +592,39 @@ void renderSystemMain(GAMESTATE &currentState_) {
     }
 }
 
+void inputThreadFn() {
 
-// most likely going to run in a separate thread
-DIRECTION inputSystem() {
-    
-    // Joystick input
-    // by calculating the magnitude of the joysticks position then checking one of the coordinates we can identify what direction it is pointing
-   
-    int x_fixed { (int)(mainJoystick.reportPosition()[0] * 10) };
-    int y_fixed { (int)(mainJoystick.reportPosition()[1] * 10) };
-    
-    if (x_fixed == 7 && y_fixed == 7) 
-        return NEUTRAL;
-    else if (x_fixed >= 7) 
-    { 
-        if (y_fixed >=7) 
-            return DOWN; 
-        else if (y_fixed < 7) 
-            return RIGHT;
-    } 
-    else if (x_fixed < 7) 
-    {
-        if (y_fixed >= 7)
-            return LEFT;
-        else if (y_fixed < 7) 
-            return UP;
+    while (true) {
+
+        
     }
-
-    return NULLPOSITION;
-
 }
 
 // movementSystem for entities
-void movementSystem(GAMESTATE &currentGameState_) {
-    currentDirection = inputSystem();
-
-     if (currentGameState_ == CHARACTER_SELECT) {
+void movementSystem() {
+    currentDirection = joystickInputSystem();
+    
+    if (currentGameState == CHARACTER_SELECT) {
             
         if (currentDirection == RIGHT) {
 
-            if ( positionComponent[0].x <= 14) positionComponent[0].x  += 2;
+            // prevents cursor from exceeding rightmost class icon
+            if (positionComponent[0].x <= 12) positionComponent[0].x  += 2;
            
         } else if (currentDirection == LEFT) {
 
-            if (positionComponent[0].x >= 6 ) positionComponent[0].x  -= 2;
-             
+            // prevents the cursor from exceeding left most class icon
+            if (positionComponent[0].x >= 8 ) positionComponent[0].x  -= 2;
+    
         }
-    }   else if (currentGameState_ == MAP) {
+    } else if (currentGameState == MAP) {
 
         playerCharacter -> Move(currentDirection);
-    } 
+
+    } else if (currentGameState == MENU) {
+    } else if (currentGameState == END_SCREEN ){
+    }
+
 }
 
 void stateManager(GAMESTATE &currentGameState_) {
@@ -566,7 +633,7 @@ void stateManager(GAMESTATE &currentGameState_) {
     // logic for state transitions goes here
 
     int defaultPos[2] {0, 1};
-    currentDirection = inputSystem();
+    currentDirection = joystickInputSystem();
 
     if (currentGameState_ == LOADING_SCREEN ) {
 
@@ -576,21 +643,22 @@ void stateManager(GAMESTATE &currentGameState_) {
 
     } else if (currentGameState_ == CHARACTER_SELECT) {
 
-        if ((mainJoystick.reportPush()) && (playerCharacter == nullptr)) {
-            
-            switch (positionComponent[0].x)//need to get the logic for the position selection and when it presses the button it chooses it  
+        if (!SW3) {
+            //(mainJoystick.reportPush()) && (playerCharacter == nullptr)
+            switch (positionComponent[0].x) //need to get the logic for the position selection and when it presses the button it chooses it  
             {
-                case 5: playerCharacter = new Fighter(5, 3, 2, defaultPos, 'F');   break;
-                case 7: playerCharacter = new Berserker(5, 3, 2, defaultPos, 'B'); break;
-                case 9: playerCharacter = new Mage(5, 3, 2, defaultPos, 'M');      break;
-                case 11: playerCharacter = new Ranger(5, 3, 2, defaultPos, 'R');   break;
-                case 13: playerCharacter = new Tank(5, 3, 2, defaultPos, 'T');     break;
+                case 6: playerCharacter = new Fighter(5, 3, 2, defaultPos, 'F');   break;
+                case 8: playerCharacter = new Berserker(5, 3, 2, defaultPos, 'B'); break;
+                case 10: playerCharacter = new Mage(5, 3, 2, defaultPos, 'M');      break;
+                case 12: playerCharacter = new Ranger(5, 3, 2, defaultPos, 'R');   break;
+                case 14: playerCharacter = new Tank(5, 3, 2, defaultPos, 'T');     break;
             }
             selectionConfirmed = true;
+            currentGameState_ = MAP;
         }
 
+    } else if (currentGameState_ == MAP) { 
     } else if (currentGameState_ == FIGHT) {
-
     } else if (currentGameState_ == END_SCREEN) {
 
         if (currentDirection != NEUTRAL) {
@@ -600,23 +668,6 @@ void stateManager(GAMESTATE &currentGameState_) {
 }
 
 
-void LCDWorkerThreadFn() {
-
-    REFRESH_RATE = 1000;
-    while (true) {
-        renderSystemSide(currentGameState);
-        thread_sleep_for(REFRESH_RATE);
-    }
-}
-
-void joystickWorkerThreadFn() {
-
-    while (true) {
-        mainJoystick.reportPush();
-        inputSystem();
-    }
-
-}
 
 int main() {
 
@@ -624,15 +675,19 @@ int main() {
     initializeEntities(0, 10, 0, 1, 0, CharacterSymbols.symbolSelector);
     currentGameState = LOADING_SCREEN;
     currentDirection = NEUTRAL;
+    selectionConfirmed = false;
     REFRESH_RATE = 250;
     
-    sideLCDWorkerThread.start(LCDWorkerThreadFn);
-    joystickWorkerThread.start(joystickWorkerThreadFn);
+    // Startup threads for side display and inputs
+    secondaryLCDThread.start(secondaryLCDThreadFn);
+    inputThread.start(inputThreadFn);
 
+    // Game Loop
     while (true) {
 
-        renderSystemMain(currentGameState);
-        movementSystem(currentGameState);
+        // take render system out of here later
+        movementSystem();
+        primaryRenderSystem();
         stateManager(currentGameState);
 
         thread_sleep_for(REFRESH_RATE);        
